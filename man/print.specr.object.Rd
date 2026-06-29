@@ -7,6 +7,7 @@
 \method{print}{specr.object}(x, ...)
 }
 \description{
-Print method for S3 class "specr.object"
+Reports the number of successful and failed specifications and, when
+available, prints a descriptive summary of the successful results.
 }
 \keyword{internal}
