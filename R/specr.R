@@ -16,9 +16,10 @@
 #' @param ... Further arguments that can be passed to \code{future_pmap}. This only becomes
 #'    important if parallelization is used. For example, if a custom model function is used
 #'    this involves passing `furrr_options` passing to the argument `.options`.
-#'    When a plan for parallelization is set, one can also set `.progress = TRUE`
-#'    to print a progress bar during the fitting process. See details for more information
-#'    on parallelization.
+#'    Set `.progress = TRUE` to print a progress bar during the fitting process.
+#'    In sequential runs, this prints the number of fitted models out of the total
+#'    number of specifications; in parallel runs, progress is handled by
+#'    \code{future_pmap}. See details for more information on parallelization.
 #'
 #' @return An object of class \code{specr.object}, which includes a data frame
 #'   with all successful specifications and their respective results along with
@@ -164,6 +165,10 @@ specr <- function(x,
 
   }
 
+  dots <- list(...)
+  show_progress <- isTRUE(dots$.progress)
+  n_specifications <- nrow(specs)
+
   # Fit one specification and capture failures without stopping the remaining fits
   fit_specification <- function(...) {
     tryCatch({
@@ -198,8 +203,34 @@ specr <- function(x,
   # Differentiate between 1 and >1 workers
   if(methods::is(plan(), "sequential")) {
 
+    progress_count <- 0L
+    show_sequential_progress <- show_progress && n_specifications > 0L
+    write_progress <- function(count) {
+      width <- 30L
+      filled <- floor(width * count / n_specifications)
+      bar <- paste0(strrep("=", filled), strrep(" ", width - filled))
+      cat(sprintf("\rFitting models: [%s] %d/%d",
+                  bar,
+                  count,
+                  n_specifications))
+      if(count == n_specifications) cat("\n")
+    }
+
+    update_progress <- function() {
+      progress_count <<- progress_count + 1L
+      write_progress(progress_count)
+    }
+
+    fit_specification_sequential <- function(...) {
+      result <- fit_specification(...)
+      if(show_sequential_progress) update_progress()
+      result
+    }
+
+    if(show_sequential_progress) write_progress(0L)
+
     fitted <- specs %>%
-      dplyr::mutate(out = pmap(., fit_specification))
+      dplyr::mutate(out = pmap(., fit_specification_sequential))
 
   } else {
 

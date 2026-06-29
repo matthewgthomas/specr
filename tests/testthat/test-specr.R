@@ -49,6 +49,25 @@ test_that("Results include confidence intervals", {
 })
 
 
+test_that("sequential progress is opt-in and reports completed models", {
+  old_plan <- future::plan()
+  on.exit(future::plan(old_plan), add = TRUE)
+  future::plan(future::sequential)
+  n_models <- nrow(as_tibble(specs))
+
+  quiet_output <- capture.output(results <- specr(specs))
+  expect_equal(quiet_output, character())
+  expect_equal(results$n_specs, n_models)
+
+  progress_output <- capture.output(progress_results <- specr(specs, .progress = TRUE))
+  progress_text <- paste(progress_output, collapse = "\n")
+
+  expect_equal(progress_results$n_specs, n_models)
+  expect_match(progress_text, "Fitting models:", fixed = TRUE)
+  expect_match(progress_text, paste0(n_models, "/", n_models), fixed = TRUE)
+})
+
+
 capture_warnings <- function(expr) {
   warnings <- character()
   value <- withCallingHandlers(
@@ -170,5 +189,3 @@ test_that("failed specifications are logged with future_pmap", {
   expect_equal(captured$value$n_failed, 1)
   expect_equal(captured$value$failures$specification, 2)
 })
-
-

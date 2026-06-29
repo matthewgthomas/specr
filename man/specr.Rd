@@ -19,9 +19,10 @@ pass to \code{specr()}.}
 \item{...}{Further arguments that can be passed to \code{future_pmap}. This only becomes
 important if parallelization is used. For example, if a custom model function is used
 this involves passing \code{furrr_options} passing to the argument \code{.options}.
-When a plan for parallelization is set, one can also set \code{.progress = TRUE}
-to print a progress bar during the fitting process. See details for more information
-on parallelization.}
+Set \code{.progress = TRUE} to print a progress bar during the fitting process.
+In sequential runs, this prints the number of fitted models out of the total
+number of specifications; in parallel runs, progress is handled by
+\code{future_pmap}. See details for more information on parallelization.}
 }
 \value{
 An object of class \code{specr.object}, which includes a data frame
