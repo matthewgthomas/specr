@@ -39,8 +39,9 @@ A printed summary of an object of class \code{specr.object}.
 \description{
 \code{summary} method for class "specr". It provides a printed output including
 technical details (e.g., cores used, duration of the fitting process, number
-of specifications), a descriptive analysis of the overall specification curve,
-a descriptive summary of the resulting sample sizes, and a head of the results.
+of successful and failed specifications), a descriptive analysis of the
+overall specification curve, a descriptive summary of the resulting sample
+sizes, and a head of the results.
 }
 \examples{
 # Setup up specifications (returns object of class "specr.setup")

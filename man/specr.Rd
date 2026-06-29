@@ -25,13 +25,15 @@ on parallelization.}
 }
 \value{
 An object of class \code{specr.object}, which includes a data frame
-with all specifications their respective results along with many other useful
-information about the model. Parameters are extracted via the function passed
-to \code{setup}. By default this is \code{broom::tidy()} and the function
-\code{broom::glance()}).Several other aspects and information are included in
-the resulting class (e.g., number of specifications, time elapsed, subsets
-included in the analyses). Use \code{methods(class = "specr.object")} for
-an overview on available methods.
+with all successful specifications and their respective results along with
+other useful information about the models. The \code{failures} element is a
+tibble containing the original row number, specification fields, and error
+message for each failed specification; \code{n_failed} gives the number of
+failures. When a plain tibble is returned, the same failure log is available
+via \code{attr(result, "failures")}. Parameters are extracted via the
+functions passed to \code{setup}. By default these are \code{broom::tidy()}
+and \code{broom::glance()}. Use
+\code{methods(class = "specr.object")} for an overview on available methods.
 }
 \description{
 Runs the specification/multiverse analysis across specified models.
@@ -63,6 +65,11 @@ Further note that the resulting object of class \code{specr.object} allows
 to use several generic function such as \code{summary()} or \code{plot()}.
 Use \code{methods(class = "specr.object")} for an overview on available
 methods and e.g., \code{?plot.specr.object} to view the dedicated help page.
+
+Errors raised while fitting a specification or extracting its results do
+not stop the remaining specifications from being evaluated. Failed
+specifications are excluded from the result data, recorded in the failure
+log described in the Value section, and reported with one aggregate warning.
 
 \bold{Parallelization}
 

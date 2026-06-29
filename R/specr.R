@@ -21,13 +21,15 @@
 #'    on parallelization.
 #'
 #' @return An object of class \code{specr.object}, which includes a data frame
-#'   with all specifications their respective results along with many other useful
-#'   information about the model. Parameters are extracted via the function passed
-#'   to \code{setup}. By default this is \code{broom::tidy()} and the function
-#'   \code{broom::glance()}).Several other aspects and information are included in
-#'   the resulting class (e.g., number of specifications, time elapsed, subsets
-#'   included in the analyses). Use \code{methods(class = "specr.object")} for
-#'   an overview on available methods.
+#'   with all successful specifications and their respective results along with
+#'   other useful information about the models. The \code{failures} element is a
+#'   tibble containing the original row number, specification fields, and error
+#'   message for each failed specification; \code{n_failed} gives the number of
+#'   failures. When a plain tibble is returned, the same failure log is available
+#'   via \code{attr(result, "failures")}. Parameters are extracted via the
+#'   functions passed to \code{setup}. By default these are \code{broom::tidy()}
+#'   and \code{broom::glance()}. Use
+#'   \code{methods(class = "specr.object")} for an overview on available methods.
 #'
 #' @details Empirical results are often contingent on analytical decisions that
 #'    are equally defensible, often arbitrary, and motivated by different reasons.
@@ -51,6 +53,11 @@
 #'    to use several generic function such as \code{summary()} or \code{plot()}.
 #'    Use \code{methods(class = "specr.object")} for an overview on available
 #'    methods and e.g., \code{?plot.specr.object} to view the dedicated help page.
+#'
+#'    Errors raised while fitting a specification or extracting its results do
+#'    not stop the remaining specifications from being evaluated. Failed
+#'    specifications are excluded from the result data, recorded in the failure
+#'    log described in the Value section, and reported with one aggregate warning.
 #'
 #'    \bold{Parallelization}
 #'
@@ -157,78 +164,74 @@ specr <- function(x,
 
   }
 
+  # Fit one specification and capture failures without stopping the remaining fits
+  fit_specification <- function(...) {
+    tryCatch({
+      l <- list(...)
+
+      # identify the grouping columns
+      group_i <- which(sapply(l, is.factor))
+      s <- rep(TRUE, nrow(data))
+
+      # Create relevant subsets
+      for (i in group_i) {
+        column <- names(l)[i]
+        value <- l[[i]]
+        if (is.na(value)) next
+        s <- s & data[[column]] == value
+      }
+
+      # Iterate across specifications
+      result <- do.call(
+        what = l$model_function,
+        args = list(
+          formula = l$formula,
+          data = data[s,])
+      )
+
+      list(result = result, error = NULL)
+    }, error = function(e) {
+      list(result = NULL, error = conditionMessage(e))
+    })
+  }
+
   # Differentiate between 1 and >1 workers
   if(methods::is(plan(), "sequential")) {
 
-    res <- specs %>%
-      dplyr::mutate(out = pmap(., function(...) {
-
-        # Initialize specs as list
-        l = list(...)
-
-        # identify the grouping columns
-        group_i <- which(sapply(l, is.factor))
-        s <- rep(TRUE, nrow(data))
-
-        # Create relevant subsets
-        for (i in group_i) {
-          column <- names(l)[i]
-          value <- l[[i]]
-          if (is.na(value)) next
-          s <- s & data[[column]] == value
-        }
-
-        # Iterate across specifications
-        do.call(
-          what = l$model_function,
-          args = list(
-            formula = l$formula,
-            data = data[s,])
-        )
-      })) %>%
-      tidyr::unnest(out)
+    fitted <- specs %>%
+      dplyr::mutate(out = pmap(., fit_specification))
 
   } else {
 
-    res <- specs %>%
-      dplyr::mutate(out = future_pmap(., function(...) {
-
-        # Initialize specs as list
-        l = list(...)
-
-        # identify the grouping columns
-        group_i <- which(sapply(l, is.factor))
-        s <- rep(TRUE, nrow(data))
-
-        # Create relevant subsets
-        for (i in group_i) {
-          column <- names(l)[i]
-          value <- l[[i]]
-          if (is.na(value)) next
-          s <- s & data[[column]] == value
-        }
-
-        # Iterate across specifications
-        do.call(
-          what = l$model_function,
-          args = list(
-            formula = l$formula,
-            data = data[s,])
-        )
-      },
-      ...),
-      ) %>%
-      tidyr::unnest(out)
+    fitted <- specs %>%
+      dplyr::mutate(out = future_pmap(., fit_specification, ...))
 
   }
 
+  failed <- purrr::map_lgl(fitted$out, function(x) !is.null(x$error))
+
+  failures <- fitted[failed, , drop = FALSE]
+  failures$specification <- which(failed)
+  failures <- failures %>%
+    dplyr::mutate(error = purrr::map_chr(.data$out, "error")) %>%
+    dplyr::select(dplyr::all_of("specification"),
+                  dplyr::everything(),
+                  -dplyr::any_of(c("out", "model_function")))
+
+  res <- fitted[!failed, , drop = FALSE] %>%
+    dplyr::mutate(out = purrr::map(.data$out, "result")) %>%
+    tidyr::unnest(out) %>%
+    dplyr::select(-dplyr::any_of("out"))
+
   # Select relevant term
-  if("op" %in% names(res)) {
-    res <- res %>%
-      dplyr::filter(term == paste(y, "~", x))
-  } else {
-    res <- res %>%
-      dplyr::filter(term == x)
+  if("term" %in% names(res)) {
+    if("op" %in% names(res)) {
+      res <- res %>%
+        dplyr::filter(term == paste(y, "~", x))
+    } else {
+      res <- res %>%
+        dplyr::filter(term == x)
+    }
   }
 
   # Compute time
@@ -242,6 +245,8 @@ specr <- function(x,
   # Create S3 class
   output <- list(data = res,
                  n_specs = nrow(res),
+                 failures = failures,
+                 n_failed = nrow(failures),
                  x = x$x,
                  y = x$y,
                  model = x$model,
@@ -257,7 +262,23 @@ specr <- function(x,
 
   # Create tibble
   output <- as_tibble(res)
+  attr(output, "failures") <- failures
 
+  }
+
+  if(nrow(failures) > 0) {
+    if(inherits(output, "specr.object")) {
+      access_path <- "the `failures` element of the returned `specr.object`"
+    } else {
+      access_path <- "`attr(result, \"failures\")` on the returned tibble"
+    }
+
+    warning(
+      nrow(failures),
+      " model specification", ifelse(nrow(failures) == 1, "", "s"),
+      " failed. See ", access_path, " for details.",
+      call. = FALSE
+    )
   }
 
   return(output)
