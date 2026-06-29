@@ -198,8 +198,9 @@ as.data.frame.specr.setup <- function(x, ...) {
 #'
 #' `summary` method for class "specr". It provides a printed output including
 #'   technical details (e.g., cores used, duration of the fitting process, number
-#'   of specifications), a descriptive analysis of the overall specification curve,
-#'   a descriptive summary of the resulting sample sizes, and a head of the results.
+#'   of successful and failed specifications), a descriptive analysis of the
+#'   overall specification curve, a descriptive summary of the resulting sample
+#'   sizes, and a head of the results.
 #'
 #' @param object An object of class "specr", usually resulting of a call to `specr`.
 #' @param type Different aspects can be summarized and printed. See details for alternative summaries
@@ -257,6 +258,13 @@ summary.specr.object <- function(object,
                                  ...){
 
   var <- enquo(var)
+  n_failed <- if(!is.null(object$n_failed)) {
+    object$n_failed
+  } else if(!is.null(object$failures)) {
+    nrow(object$failures)
+  } else {
+    0
+  }
 
   if(type == "default") {
 
@@ -268,7 +276,17 @@ summary.specr.object <- function(object,
     cat("  Class:                         ", class(object), "-- version:", as.character(utils::packageVersion("specr")), "\n")
     cat("  Cores used:                    ", object$workers, "\n")
     cat("  Duration of fitting process:   ", object$time, "\n")
-    cat("  Number of specifications:      ", as.numeric(object$n_specs), "\n\n")
+    cat("  Number of specifications:      ", as.numeric(object$n_specs), "\n")
+    cat("  Number of failed specifications:", as.numeric(n_failed), "\n\n")
+
+    if(n_failed > 0) {
+      cat("Failure details are available in the `failures` element.\n\n")
+    }
+
+    if(nrow(object$data) == 0) {
+      cat("No successful model specifications to summarize.\n")
+      return(invisible(object))
+    }
 
     # Short descriptive analysis across all specifications
     cat("Descriptive summary of the specification curve:\n\n")
@@ -330,12 +348,33 @@ summary.specr.object <- function(object,
 }
 
 #' Print method for S3 class "specr.object"
+#'
+#' Reports the number of successful and failed specifications and, when
+#' available, prints a descriptive summary of the successful results.
 #' @keywords internal
 #' @export
 print.specr.object <- function(x, ...) {
 
+  n_failed <- if(!is.null(x$n_failed)) {
+    x$n_failed
+  } else if(!is.null(x$failures)) {
+    nrow(x$failures)
+  } else {
+    0
+  }
+
   cat("Models fitted based on", nrow(x$data), "specifications\n")
+  cat("Number of failed specifications:", n_failed, "\n")
   cat("Number of cores used:", x$workers, "\n\n")
+
+  if(n_failed > 0) {
+    cat("Failure details are available in the `failures` element.\n\n")
+  }
+
+  if(nrow(x$data) == 0) {
+    cat("No successful model specifications to summarize.\n")
+    return(invisible(x))
+  }
 
   # Short descriptive analysis across all specifications
   cat("Descriptive summary of the specification curve:\n\n")
@@ -976,5 +1015,3 @@ plot.specr.boot <- function(x, ...) {
     labs(x = "Specifications (ranked)", y = "estimate", color = "", linetype = "")
 
 }
-
-
